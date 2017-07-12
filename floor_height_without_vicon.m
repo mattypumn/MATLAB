@@ -5,9 +5,9 @@ mars_matlab_path = getenv('MARS_MATLAB');
 addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters. 
-data = 'pr55_hall_0';
+data = 'sb10_meditation_45';
 output_heights_none = '~/for_matt/height_out/updated_calib_heights/none/';
-output_heights_fklt = '~/for_matt/height_out/updated_calib_heights/fklt/';
+output_heights_fklt = '~/for_matt/height_out/reduced_threshold_heights/fklt/';
 
 %% Data set-up.
 height_thresh = 1.2;
@@ -162,7 +162,7 @@ ylabel('Height in Camera (m)');
 xlabel('Time (s)');
 legend('FAST-KLT','VIO inliers');
 
-info_area = axes('Position',[.15 -.3 1 1],'Visible','off');
+info_area = axes('Position',[.32 -.35 1 1],'Visible','off');
 % info_str(1) = {sprintf('Total Poses:  %d', size(t_traj, 1))};
 info_str(1) = {sprintf('Estimates w/ FAST-KLT :  %d', sum(g_h_fk > height_thresh))};
 info_str(2) = {sprintf('Estimates w/ VIO inliers:  %d', sum(g_h_none > height_thresh))};

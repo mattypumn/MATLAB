@@ -1,4 +1,4 @@
-% close all; clear; clc;
+close all; clear; clc;
 
 %% Use MARS/matlab.
 mars_matlab_path = getenv('MARS_MATLAB');
@@ -9,15 +9,26 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 %% Parameters.
 data_dir= '/usr/local/google/home/mpoulter/for_matt/polaris/pr55_ws/45deg/';
 
-title_string = 'fast';
+keypoints_dir_1 = '~/Desktop/pr55ws45_mono_3step_updated_extrinsics/global_points/';
+legend_str_1 = 'mono w/ updated extrinsics';
+
+% keypoints_dir_1 = '~/Desktop/pr5ws45_mono_3step_static-extrinsics/global_points/';
+% legend_str_1 = 'mono w/o updated extrinsics';
+
+
+
+keypoints_dir_2 = '~/Desktop/pr55ws45_stereo_3step_updated-extrinsics/vio_points/';
+legend_str_2 = 'stereo ground truth';
+
+title_string = 'Mono and Stereo';
 start_image = 27;
 end_image = 600;
 plot_range = [-10 10];
 
-%%%%%%% Data files.      BE SURE TO SELECT THE PROPER FILE FORMAT
-G_keypoints_dir = '~/Desktop/pr55_ws_45_stereo_points/fast_vio/vio_points/';
+% %%%%%%% Data files.      BE SURE TO SELECT THE PROPER FILE FORMAT
+% G_keypoints_dir = '~/Desktop/pr55_ws_45_stereo_points/fast_vio/vio_points/';
 % OR ...
-% % data_path = '~/Desktop/global_points/';
+% data_path = '~/Desktop/global_points/';
 
 %% Setup.
 tango_pose_file = [data_dir '/out/tango_poses.txt'];
@@ -61,7 +72,6 @@ xlabel('x'); ylabel('y'); zlabel('z');
 xlim(plot_range);
 ylim(plot_range);
 zlim(plot_range);
-hold on;
 %% Main Loop.
 for i = 1 : size(tango_pose,1)
     % Get the correct image number.
@@ -80,11 +90,29 @@ for i = 1 : size(tango_pose,1)
              0 0 0 1];
     G_T_CL = G_T_I * I_T_CL;
     
+    G_pts_1 = [];
     %%%%%%%%%%%% Read in the points from the Global frame.
-    points_file = [G_keypoints_dir num2str(tango_pose(i,1), '%06f') '.txt'];
-    if  exist(points_file, 'file')
-        G_pts = dlmread(points_file);
+%     %%%%  For Mono-updated-extrinsics
+    points_file1 = [keypoints_dir_1 num2str(img_num) '.txt'];
+%     %%%% For Mono persist extrinsics
+%     points_file1 = [keypoints_dir_1 'Cam_points_' num2str(img_num, '%06f') '.txt'];
+    
+    
+    if  exist(points_file1, 'file')
+        CL_pts = dlmread(points_file1);
+        point_count = size(CL_pts, 1);
+        G_pts_1 = (G_T_CL * [CL_pts, ones(point_count,1)]')';
     else 
+        disp('cant find points_file1');
+        continue;
+    end
+    
+    G_pts_2 = [];
+    points_file2 = [keypoints_dir_2 num2str(tango_pose(i,1), '%06f') '.txt'];
+    if  exist(points_file2, 'file')
+        G_pts_2 = dlmread(points_file2);
+    else 
+        disp('cant find points_file2');
         continue;
     end
 
@@ -98,10 +126,15 @@ for i = 1 : size(tango_pose,1)
 
     % Plot.
     figure(fig3);
-    plot3(G_pts(:,1), G_pts(:,2), G_pts(:,3), '.');
-%     figure, plot(pts(:,1)./pts(:,3), -pts(:,2)./pts(:,3), '.')
+    plot3(G_pts_1(:,1), G_pts_1(:,2), G_pts_1(:,3), '.r');
+    
+    hold on;
+    plot3(G_pts_2(:,1), G_pts_2(:,2), G_pts_2(:,3), '.b');
+% %     figure, plot(pts(:,1)./pts(:,3), -pts(:,2)./pts(:,3), '.')
     title([title_string '   image: ' num2str(img_num)]);
+    legend(legend_str_1, legend_str_2);
     pause;
+    hold off;
 end
 
 

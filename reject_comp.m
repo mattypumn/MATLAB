@@ -6,7 +6,7 @@ data_dir = '~/for_matt/polaris/pr55_ws/45deg/';
 rej_dir = '~/Desktop/rejection_log/';
 start_image = 27;
 end_image = 500;
-step_size = 3;
+step_size = 1;
 
 %% Setup.
 im_dir = [data_dir 'dump/feature_tracking_primary/'];
@@ -50,7 +50,7 @@ for i = start_image:step_size:end_image
     %% Plot.
     imshow(im);
     hold on;
-    title('outlier rejection');
+    title(['outlier rejection.  Image: ' num2str(i)]);
     plot(epipolar_rejects(:,1)', epipolar_rejects(:,2)', '+r');
     plot(depth_rejects(:,1)', depth_rejects(:,2)', 'xb');
     plot(reproj_rejects(:,1)', reproj_rejects(:,2)', 'og');
