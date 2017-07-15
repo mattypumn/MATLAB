@@ -1,12 +1,15 @@
 clear; close all; clc;
 
+%% Use MARS/matlab.
+mars_matlab_path = getenv('MARS_MATLAB');
+addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters.
 data_dir = '~/for_matt/polaris/pr55_ws/45deg/';
 rej_dir = '~/Desktop/rejection_log/';
-start_image = 27;
+start_image = 48;
 end_image = 500;
-step_size = 1;
+step_size = 3;
 
 %% Setup.
 im_dir = [data_dir 'dump/feature_tracking_primary/'];

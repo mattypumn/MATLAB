@@ -9,19 +9,19 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 %% Parameters.
 data_dir= '/usr/local/google/home/mpoulter/for_matt/polaris/pr55_ws/45deg/';
 
-keypoints_dir_1 = '~/Desktop/pr55ws45_mono_3step_updated_extrinsics/global_points/';
+keypoints_dir_1 = '~/Desktop/global_points/';
 legend_str_1 = 'mono w/ updated extrinsics';
 
 % keypoints_dir_1 = '~/Desktop/pr5ws45_mono_3step_static-extrinsics/global_points/';
 % legend_str_1 = 'mono w/o updated extrinsics';
 
 
-
-keypoints_dir_2 = '~/Desktop/pr55ws45_stereo_3step_updated-extrinsics/vio_points/';
+% % PR55_ws_45 ground truth.
+keypoints_dir_2 = '~/Desktop/prev_runs/pr55ws45_stereo_3step_updated-extrinsics/vio_points/';
 legend_str_2 = 'stereo ground truth';
 
 title_string = 'Mono and Stereo';
-start_image = 27;
+start_image = 37;
 end_image = 600;
 plot_range = [-10 10];
 
@@ -79,8 +79,8 @@ for i = 1 : size(tango_pose,1)
     img_num = timestamps(timestamp_idx, 1);
     
     % Show for testing.
-%     disp(['timestamp: ' num2str(tango_pose(i,1))]);
-%     disp(['image data: ' num2str(img_num)]);
+    disp(['timestamp: ' num2str(tango_pose(i,1))]);
+    disp(['image data: ' num2str(img_num)]);
     
     % Calculate G_T_CL
     G_p_I = tango_pose(i, 2:4)';
@@ -93,9 +93,9 @@ for i = 1 : size(tango_pose,1)
     G_pts_1 = [];
     %%%%%%%%%%%% Read in the points from the Global frame.
 %     %%%%  For Mono-updated-extrinsics
-    points_file1 = [keypoints_dir_1 num2str(img_num) '.txt'];
+%     points_file1 = [keypoints_dir_1 num2str(img_num) '.txt'];
 %     %%%% For Mono persist extrinsics
-%     points_file1 = [keypoints_dir_1 'Cam_points_' num2str(img_num, '%06f') '.txt'];
+    points_file1 = [keypoints_dir_1 'Cam_points_' num2str(img_num, '%06f') '.txt'];
     
     
     if  exist(points_file1, 'file')
@@ -103,7 +103,8 @@ for i = 1 : size(tango_pose,1)
         point_count = size(CL_pts, 1);
         G_pts_1 = (G_T_CL * [CL_pts, ones(point_count,1)]')';
     else 
-        disp('cant find points_file1');
+        disp(['cant find points file for: ' num2str(img_num)]);
+        pause;
         continue;
     end
     
@@ -116,6 +117,8 @@ for i = 1 : size(tango_pose,1)
         continue;
     end
 
+    disp(['mono features: ' num2str(size(G_pts_1, 1))]);
+    disp(['stereo features: ' num2str(size(G_pts_2, 1))]);
     %%%%%%%%%%%%  OR: 
     
 %     %%%%%%%%%%%% Read in the points from a camera point of view.
@@ -125,16 +128,19 @@ for i = 1 : size(tango_pose,1)
 %     G_pts = (G_T_CL * [CL_pts, ones(point_count,1)]')';
 
     % Plot.
-    figure(fig3);
-    plot3(G_pts_1(:,1), G_pts_1(:,2), G_pts_1(:,3), '.r');
+%     figure(fig3);
+%     plot3(G_pts_1(:,1), G_pts_1(:,2), G_pts_1(:,3), '.r');
     
     hold on;
     plot3(G_pts_2(:,1), G_pts_2(:,2), G_pts_2(:,3), '.b');
 % %     figure, plot(pts(:,1)./pts(:,3), -pts(:,2)./pts(:,3), '.')
     title([title_string '   image: ' num2str(img_num)]);
-    legend(legend_str_1, legend_str_2);
+%     legend(legend_str_1, legend_str_2);
+    xlabel('x');
+    ylabel('y');
+    zlabel('z');
     pause;
-    hold off;
+%     hold off;
 end
 
 

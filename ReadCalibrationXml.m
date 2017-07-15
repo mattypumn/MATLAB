@@ -1,3 +1,6 @@
+%%  Still under construction.
+
+
 function [ A_p_b, A_q_b ] = ReadCalibrationXml( file, id_A, id_B)
 %READCALIBRATIONFILE Summary of this function goes here
 %   Detailed explanation goes here
@@ -14,9 +17,13 @@ function [ A_p_b, A_q_b ] = ReadCalibrationXml( file, id_A, id_B)
         if ~does_match
             continue;
         end
-        
-%         data_A = theStruct.Children(i).Children;
-        
+        if left_to_right 
+%             data_A = theStruct.Children(i).Children(1).Value;
+%             data_B = theStruct.Children(i).Children(2).Value;
+        else 
+%             data_B = theStruct.Children(i).Children(1).Value;
+%             data_A = theStruct.Children(i).Children(2).Value;
+        end
    end
    theStruct
   
