@@ -4,7 +4,7 @@ mars_matlab_path = getenv('MARS_MATLAB');
 addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 out_path = '~/for_matt/height_out/';
-data_path = '/usr/local/google/home/mpoulter/for_matt/polaris_floor_vicon/mrinal/1/';
+data_path = '/usr/local/google/home/mpoulter/for_matt/polaris_floor_vicon/mrinal/4/';
 vicon_cal_path = '/usr/local/google/home/mpoulter/for_matt/polaris_floor_vicon/mrinal/4/';
 
 path_h = [out_path 'stable_height.txt'];
@@ -59,6 +59,12 @@ cond = (t_traj <= max(v_t)) & (t_traj >= min(v_t));
 t_traj = t_traj(cond);
 gt_p_i = gt_p_i(cond,:);
 gt_q_i = gt_q_i(cond,:);
+
+
+
+
+
+%%
 
 [g_p_c_, g_q_c_] = interp_poses(g_p_c, g_q_c, v_t, t_traj);
 

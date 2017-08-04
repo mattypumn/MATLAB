@@ -5,9 +5,9 @@ mars_matlab_path = getenv('MARS_MATLAB');
 addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters. 
-data = 'sb10_meditation_45';
-output_heights_none = '~/for_matt/height_out/updated_calib_heights/none/';
-output_heights_fklt = '~/for_matt/height_out/reduced_threshold_heights/fklt/';
+data = 'pr55_ws_45';
+output_heights_none = '~/for_matt/height_out/';
+output_heights_fklt = '~/for_matt/height_out/';
 
 %% Data set-up.
 height_thresh = 1.2;
@@ -20,7 +20,8 @@ timestamp_file = [data_path 'dump/feature_tracking_primary_timestamps.txt'];
 
 % Printed heights.
 file_FASTKLT = [output_heights_fklt 'stable_height_' data '_fklt.txt'];
-file_NONE = [output_heights_none 'stable_height_' data '_none.txt'];
+% file_NONE = [output_heights_none 'stable_height_' data '_none.txt'];
+file_NONE = [output_heights_none 'stable_height.txt'];
 
 h_est_fk = [];
 h_est_none = [];
@@ -164,8 +165,8 @@ legend('FAST-KLT','VIO inliers');
 
 info_area = axes('Position',[.32 -.35 1 1],'Visible','off');
 % info_str(1) = {sprintf('Total Poses:  %d', size(t_traj, 1))};
-info_str(1) = {sprintf('Estimates w/ FAST-KLT :  %d', sum(g_h_fk > height_thresh))};
-info_str(2) = {sprintf('Estimates w/ VIO inliers:  %d', sum(g_h_none > height_thresh))};
+info_str(1) = {sprintf('Estimates w/ Pyr Size 3 :  %d', sum(g_h_fk > height_thresh))};
+info_str(2) = {sprintf('Estimates w/ Pyr Size 0:  %d', sum(g_h_none > height_thresh))};
 info_str(3) = {sprintf('Height Threshold: %0.1f m', height_thresh)};
 
 

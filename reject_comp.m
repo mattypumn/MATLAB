@@ -5,9 +5,9 @@ mars_matlab_path = getenv('MARS_MATLAB');
 addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters.
-data_dir = '~/for_matt/polaris/pr55_ws/45deg/';
+data_dir = '~/for_matt/polaris_floor_vicon/mrinal/1/';
 rej_dir = '~/Desktop/rejection_log/';
-start_image = 48;
+start_image = 51;
 end_image = 500;
 step_size = 3;
 
@@ -45,9 +45,10 @@ for i = start_image:step_size:end_image
     rej_data = dlmread(rej_file);
     
     %% Extract points to plot.
-    epipolar_rejects = rej_data((rej_data(:,5) == 1), 1:2);
-    depth_rejects = rej_data((rej_data(:,6) == 1), 1:2);
-    reproj_rejects = rej_data((rej_data(:,7) == 1), 1:2);
+    % Add [1 1] just incase one is empty.
+    epipolar_rejects =[ rej_data((rej_data(:,5) == 1), 3:4); [1 1]];
+    depth_rejects = [rej_data((rej_data(:,6) == 1), 3:4); [1 1]];
+    reproj_rejects = [rej_data((rej_data(:,7) == 1), 3:4); [1 1]];
     
     
     %% Plot.
