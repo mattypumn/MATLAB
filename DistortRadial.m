@@ -24,6 +24,6 @@ function pixel = DistortRadial(ray, fc, cc, kc)
     pix_term2 = 1.0 + kc(1) * r_sq + kc(2) * r_four + ...
                 kc(5) * r_four * r_sq + 2.0 * kc(3) * ray(2) + ...
                 2.0 * kc(4) * ray(1);
-    pixel(1) = fc(1) * (pix_term2 * ray(1) + kc(4)*r_sq) + cc(1);
-    pixel(2) = fc(2) * (pix_term2 * ray(2) + kc(3)*r_sq) + cc(2);
+    pixel(1,1) = fc(1) * (pix_term2 * ray(1) + kc(4)*r_sq) + cc(1);
+    pixel(2,1) = fc(2) * (pix_term2 * ray(2) + kc(3)*r_sq) + cc(2);
 end

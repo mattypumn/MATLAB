@@ -6,10 +6,11 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters.
 % base directory
-DEBUG_IMAGES = true;
-start_image = 100;
+DEBUG_IMAGES = false;
+bounding_pixel_radius = 60;
+start_image = 6;
 end_image = 10000;
-dataset_dir = '~/for_matt/pixel_finger/exp4/';
+dataset_dir = '~/for_matt/pixel_finger/exp7/';
 tango_to_vicon_calib_filepath = ['~/for_matt/pixel_finger/exp1/','Tango_to_Vicon_Calibration.txt'];
 vicon_frame_rate = 500;
 kMaxTimeDiffBetweenCamPoseAndFingerPosition = 1 / vicon_frame_rate;
@@ -26,6 +27,9 @@ tango_cam_filepath = fullfile(dataset_dir, 'out/tango_poses.txt');
 time_alignment_filepath = fullfile(dataset_dir, 'time_alignment.txt');
 image_timestamps_file = fullfile(dataset_dir, 'dump/feature_tracking_primary_timestamps.txt');
 image_dir = fullfile(dataset_dir, 'dump/feature_tracking_primary/');
+box_output_file = fullfile(dataset_dir, 'dump/finger_bounding_box.txt');
+marker_output_file = fullfile(dataset_dir, 'dump/marker_pixels.txt');
+box_format_file = fullfile(dataset_dir, 'box_output_readme.txt');
 
 
 %% Import Data.
@@ -117,14 +121,16 @@ end
 if (DEBUG_IMAGES)
     fig2d = figure();
 end
-finger_boxes = [];
+finger_boxes_data = [];
+marker_pixel_data = [];
 for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
     %%  Show the correct image.
     img_num = tango_img_timestamps(i,1);
     img_time = tango_img_timestamps(i,2);
-    if (DEBUG_IMAGES)
-        image_file = [image_dir 'image_' num2str(img_num, '%05d') '.pgm'];
-        img = imread(image_file);   
+    
+    image_file = [image_dir 'image_' num2str(img_num, '%05d') '.pgm'];
+    img = imread(image_file);   
+    if DEBUG_IMAGES
         imshow(img);
         hold on;
     end
@@ -148,17 +154,24 @@ for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
     i_p_vg = quat2rot(quat_inv(vg_q_imu_(:,i))) * -vg_p_imu_(:,i);
     c_p_vg = c_p_i + quat2rot(quat_inv(I_q_C)) * i_p_vg;
     
+    inbounds_markers_matrix = [];
     inbounds_markers_vec = [];
     %% Check each marker at timestep and show if it is in image plane.
     for marker_i = 1 : 3 : (size(positions_data,2) - 2)
         vg_p_m = positions_data(marker_i : marker_i + 2)';
+        if isempty(vg_p_m) 
+            continue
+        end
+
         if ~any(vg_p_m)
-            % If all zeros, continue.
+            % If all zeros, pad vector and continue.
+            inbounds_markers_vec = [inbounds_markers_vec; 0;0];
             continue
         end
         c_ray_m = c_p_vg + quat2rot(c_q_vg) * vg_p_m; 
         if c_ray_m(3) < 0
-            % If finger is behind camera, continue.
+            % If finger is behind camera, pad vector and continue.
+            inbounds_markers_vec = [inbounds_markers_vec; 0;0];
             continue;
         end
         c_h_m = c_ray_m / c_ray_m(3);
@@ -167,72 +180,48 @@ for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
         pix = DistortRadial(c_h_m, fc, cc, kc);
 %         pix = pixel_K * c_p_m;
 %         pix = pix / pix(3);
-        %% If on image, save it (and/or) show it.
+        
         if pix(1) > 0 && pix(1) <= size(img,2) && pix(2) > 0 && pix(2) <= size(img,1)
+            %% If on image, save it (and/or) show it.
             inbounds_markers_vec = [inbounds_markers_vec; pix];
+            inbounds_markers_matrix = [inbounds_markers_matrix, pix];
             if (DEBUG_IMAGES)
                 plot(pix(1), pix(2), '-c+');
             end
+        else 
+            %% else pad.
+            inbounds_markers_vec = [inbounds_markers_vec; 0;0];
         end
     end
     
-    [top_left_corner, height, width] = GetBoundingBox(inbounds_marker_vec);
-    finger_boxes = [finger_boxes;
-                    image_num, top_left_corner', height, width];
-%     
-%     %% Get cam_T_tg
-%     i_q_tg = quat_inv(tg_T_imu_data(i,5:end)');
-%     c_q_tg = quat_mul(quat_inv(I_q_C), i_q_tg);
-%     c_p_tg = -(quat2rot(c_q_tg) * tg_T_imu_data(i,2:4)' + ...
-%                 quat2rot(quat_inv(I_q_C)) * I_p_C);
-%     
-% 
-%     
-%     for marker_i = 1 : 3 : (size(positions_data, 2) - 2)
-%         %% Calculate c_p_m.
-%         vg_p_m = positions_data(marker_i : marker_i + 2)';
-%         if ~any(vg_p_m) 
-%             % If all zeros, continue.
-%             continue;
-%         end
-%         c_p_vg = c_p_tg + quat2rot(c_q_tg) * tg_p_vg;
-%         c_ray_m = c_p_vg + quat2rot(c_q_tg) * quat2rot(tg_q_vg) * vg_p_m;
-%         if c_ray_m(3) < 0
-%             % If hand is behind camera, continue.
-%             continue;
-%         end
-%         %% Convert to pixel coords
-%         pix = DistortRadial(c_ray_m, fc, cc, kc);
-% %         pix = pixel_K * c_p_m;
-% %         pix = pix / pix(3);
-%         %% If on image, show it.
-%         if pix(1) > 0 && pix(1) <= size(img,2) && pix(2) > 0 && pix(2) <= size(img,1)
-%             plot(pix(1), pix(2), '-rx');
-%         end
-%     end
-    disp('hit enter to continue...');
-    pause;
-    hold off;
+    %% Calculate the bounding box of finger in image.
+    [top_left_corner, height, width] = GetBoundingBox(inbounds_markers_matrix, bounding_pixel_radius);
+    top_left_corner = floor([min(max(top_left_corner(1), 0), size(img, 2));
+                       min(max(top_left_corner(2), 0), size(img, 1))]);
+    height = floor(min(height, size(img,1) - top_left_corner(2)));
+    width = floor(min(width, size(img,2) - top_left_corner(1)));
+    
+    if DEBUG_IMAGES 
+        rectangle('position', [top_left_corner', width, height]);
+    end
+    
+    %% Save bounding box and marker pixels.
+    finger_boxes_data = [finger_boxes_data;
+                        img_num, top_left_corner', height, width];
+    marker_pixel_data = [marker_pixel_data;
+                        img_num, inbounds_markers_vec'];
+   
+    if (DEBUG_IMAGES) 
+        disp('hit enter to continue...');
+        pause;
+        hold off;
+    end
 end
 
-
-% %% Eliminate zero positions.  This happens when marker is occluded.
-% vg_p_finger_cell = {};
-% finger_cell_size = 0;
-% for i = 1 : size(vg_p_finger_, 1)
-%     positions = [];
-%     for col = 2 : 3 : size(vg_p_finger_, 2) - 1
-%         if any(vg_p_finger_(i,col:col+2))
-%             positions = [positions, vg_p_finger_(i,col:col+2)];
-%         end
-%     end
-%     if ~isempty(positions)
-%         finger_cell_size = finger_cell_size + 1;
-%         vg_p_finger_cell{finger_cell_size} = [vg_p_finger_(i,1), ...
-%                                                   positions];
-%     end
-% end
+%% Save the bounding box data.
+dlmwrite(box_output_file, finger_boxes_data, ',');
+dlmwrite(marker_output_file, marker_pixel_data, ',');
 
 disp('finished run');
-close(fig2d);
+close all;
 
