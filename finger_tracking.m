@@ -6,6 +6,7 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters.
 % base directory
+DEBUG_IMAGES = true;
 start_image = 100;
 end_image = 10000;
 dataset_dir = '~/for_matt/pixel_finger/exp4/';
@@ -25,6 +26,7 @@ tango_cam_filepath = fullfile(dataset_dir, 'out/tango_poses.txt');
 time_alignment_filepath = fullfile(dataset_dir, 'time_alignment.txt');
 image_timestamps_file = fullfile(dataset_dir, 'dump/feature_tracking_primary_timestamps.txt');
 image_dir = fullfile(dataset_dir, 'dump/feature_tracking_primary/');
+
 
 %% Import Data.
 % targ: The reference frame of the vicon target.
@@ -92,7 +94,7 @@ end
 
 %% Interpolate Vicon Camera poses to align with tango timestamps.
 [vg_p_imu_, vg_q_imu_] = interp_poses(vg_p_imu_raw, vg_q_imu_raw, ...
-                                   vg_T_target_data(:,1), tg_T_imu_data(:,1));
+                                   vg_T_target_data(:,1), tango_img_timestamps(:,2));
 
 %% Grab the closest untracked points for each Image.
 vg_aligned_finger_data = [];
@@ -110,23 +112,22 @@ for i = 1 : size(tango_img_timestamps, 1)
                                   tango_img_timestamps(i,2), vg_p_finger_data(min_idx, 2:end)];
     end
 end
-
-%% Extract Vicon Global to Tango global from first time instance.
-tg_q_vg = quat_mul(tg_T_imu_data(1,5:end)', quat_inv(vg_q_imu_(:,1)));
-tg_R_vg = quat2rot(tg_q_vg);
-tg_p_vg =  tg_T_imu_data(1,2:4)' - tg_R_vg * vg_p_imu_(:,1);
-
-
+   
 %% Main loop through and display image with finger points.
-fig2d = figure();
-for i = start_image : min(size(tango_img_timestamps,1), end_image)
+if (DEBUG_IMAGES)
+    fig2d = figure();
+end
+finger_boxes = [];
+for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
     %%  Show the correct image.
     img_num = tango_img_timestamps(i,1);
     img_time = tango_img_timestamps(i,2);
-    image_file = [image_dir 'image_' num2str(img_num, '%05d') '.pgm'];
-    img = imread(image_file);   
-    imshow(img);
-    hold on;
+    if (DEBUG_IMAGES)
+        image_file = [image_dir 'image_' num2str(img_num, '%05d') '.pgm'];
+        img = imread(image_file);   
+        imshow(img);
+        hold on;
+    end
 
     disp(['timestamp: ' num2str(img_time)]);
     disp(['image num: ' num2str(img_num)]);
@@ -147,6 +148,7 @@ for i = start_image : min(size(tango_img_timestamps,1), end_image)
     i_p_vg = quat2rot(quat_inv(vg_q_imu_(:,i))) * -vg_p_imu_(:,i);
     c_p_vg = c_p_i + quat2rot(quat_inv(I_q_C)) * i_p_vg;
     
+    inbounds_markers_vec = [];
     %% Check each marker at timestep and show if it is in image plane.
     for marker_i = 1 : 3 : (size(positions_data,2) - 2)
         vg_p_m = positions_data(marker_i : marker_i + 2)';
@@ -156,7 +158,7 @@ for i = start_image : min(size(tango_img_timestamps,1), end_image)
         end
         c_ray_m = c_p_vg + quat2rot(c_q_vg) * vg_p_m; 
         if c_ray_m(3) < 0
-            % If hand is behind camera, continue.
+            % If finger is behind camera, continue.
             continue;
         end
         c_h_m = c_ray_m / c_ray_m(3);
@@ -165,11 +167,18 @@ for i = start_image : min(size(tango_img_timestamps,1), end_image)
         pix = DistortRadial(c_h_m, fc, cc, kc);
 %         pix = pixel_K * c_p_m;
 %         pix = pix / pix(3);
-        %% If on image, show it.
+        %% If on image, save it (and/or) show it.
         if pix(1) > 0 && pix(1) <= size(img,2) && pix(2) > 0 && pix(2) <= size(img,1)
-            plot(pix(1), pix(2), '-c+');
+            inbounds_markers_vec = [inbounds_markers_vec; pix];
+            if (DEBUG_IMAGES)
+                plot(pix(1), pix(2), '-c+');
+            end
         end
     end
+    
+    [top_left_corner, height, width] = GetBoundingBox(inbounds_marker_vec);
+    finger_boxes = [finger_boxes;
+                    image_num, top_left_corner', height, width];
 %     
 %     %% Get cam_T_tg
 %     i_q_tg = quat_inv(tg_T_imu_data(i,5:end)');
