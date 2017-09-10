@@ -7,11 +7,11 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 %% Parameters.
 % base directory
 DEBUG_IMAGES = false;
-bounding_pixel_radius = 60;
-start_image = 6;
+bounding_pixel_radius = 80;
+start_image = 1;
 end_image = 10000;
-dataset_dir = '~/for_matt/pixel_finger/exp7/';
-tango_to_vicon_calib_filepath = ['~/for_matt/pixel_finger/exp1/','Tango_to_Vicon_Calibration.txt'];
+dataset_dir = '~/for_matt/pixel_finger/color/exp6/';
+tango_to_vicon_calib_filepath = ['~/for_matt/pixel_finger/color/exp5/','Tango_to_Vicon_Calibration.txt'];
 vicon_frame_rate = 500;
 kMaxTimeDiffBetweenCamPoseAndFingerPosition = 1 / vicon_frame_rate;
 I_q_C = [-0.9999381563640312;  0.004447440852834265;  -0.009283474950362221;  0.004209609246604872];
@@ -23,7 +23,7 @@ kc = [0.01613255596460211; -0.06416463599461311; 0; 0; 0.1025574979617985];
 %% Setup.
 vicon_cam_filepath = fullfile(dataset_dir, 'axe_pose.txt');
 vicon_finger_filepath = fullfile(dataset_dir, 'untracked_position.txt');
-tango_cam_filepath = fullfile(dataset_dir, 'out/tango_poses.txt');
+% tango_cam_filepath = fullfile(dataset_dir, 'out/tango_poses.txt');
 time_alignment_filepath = fullfile(dataset_dir, 'time_alignment.txt');
 image_timestamps_file = fullfile(dataset_dir, 'dump/feature_tracking_primary_timestamps.txt');
 image_dir = fullfile(dataset_dir, 'dump/feature_tracking_primary/');
@@ -55,7 +55,7 @@ vg_p_finger_data = dlmread(vicon_finger_filepath);
 v_valid = sum(vg_p_finger_data(:,2:end),2) ~= 0;
 vg_p_finger_data = vg_p_finger_data(v_valid, :);
 
-tg_T_imu_data = dlmread(tango_cam_filepath);
+% tg_T_imu_data = dlmread(tango_cam_filepath);
 
 tango_img_timestamps = ReadImageTimestampFile(image_timestamps_file);
 
@@ -64,9 +64,9 @@ vg_T_target_data(:,1) = vg_T_target_data(:,1)/vicon_frame_rate + timeshift;
 vg_p_finger_data(:,1) = vg_p_finger_data(:,1)/vicon_frame_rate + timeshift;
 
 %% Eliminate any Tango data outside Vicon times.
-cond = (tg_T_imu_data(:,1) <= max(vg_T_target_data(:,1))) & ...
-        (tg_T_imu_data(:,1) >= min(vg_T_target_data(:,1))); 
-tg_T_imu_data = tg_T_imu_data(cond,:);
+% cond = (tg_T_imu_data(:,1) <= max(vg_T_target_data(:,1))) & ...
+%         (tg_T_imu_data(:,1) >= min(vg_T_target_data(:,1))); 
+% tg_T_imu_data = tg_T_imu_data(cond,:);
 
 %% Extra prep for vicon poses.
 vg_p_targCam = vg_T_target_data(:,2:4)/1000;
@@ -128,7 +128,7 @@ for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
     img_num = tango_img_timestamps(i,1);
     img_time = tango_img_timestamps(i,2);
     
-    image_file = [image_dir 'image_' num2str(img_num, '%05d') '.pgm'];
+    image_file = [image_dir 'image_' num2str(img_num, '%05d') '.ppm'];
     img = imread(image_file);   
     if DEBUG_IMAGES
         imshow(img);

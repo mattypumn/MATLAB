@@ -56,7 +56,7 @@ N = length(vg_p_targ);
 vg_p_i = zeros(3, N);
 vg_q_i = zeros(4, N);
 for i=1:N
-    vg_p_i(:,i) = vg_p_targ(i,:)' + targ_p_imu;
+    vg_p_i(:,i) = vg_p_targ(i,:)' + quat2rot(vg_q_targ(i,:)') * targ_p_imu;
     vg_q_i(:,i) = quat_mul(vg_q_targ(i,:)', targ_q_imu);
 end
 
