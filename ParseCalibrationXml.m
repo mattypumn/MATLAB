@@ -1,11 +1,10 @@
 %%  Still under construction.
 
 
-function [ A_p_b, A_q_b ] = ReadCalibrationXml( file, id_A, id_B)
-%READCALIBRATIONFILE Summary of this function goes here
-%   Detailed explanation goes here
+function [ A_p_b, A_q_b ] = ParseCalibrationXml( xml_file, id_A, id_B)
+%ParseCalibrationXml Summary of this function goes here
 
-   tree = xmlread(file);
+   tree = xmlread(xml_file);
    theStruct = parseChildNodes(tree);
    
    for i = 1 : length(theStruct.Children)
@@ -18,11 +17,11 @@ function [ A_p_b, A_q_b ] = ReadCalibrationXml( file, id_A, id_B)
             continue;
         end
         if left_to_right 
-%             data_A = theStruct.Children(i).Children(1).Value;
-%             data_B = theStruct.Children(i).Children(2).Value;
+            data_A = theStruct.Children(i).Children(1).Value;
+            data_B = theStruct.Children(i).Children(2).Value;
         else 
-%             data_B = theStruct.Children(i).Children(1).Value;
-%             data_A = theStruct.Children(i).Children(2).Value;
+            data_A = theStruct.Children(i).Children(2).Value;
+            data_B = theStruct.Children(i).Children(1).Value;
         end
    end
    theStruct
