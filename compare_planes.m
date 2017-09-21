@@ -185,7 +185,7 @@ end
 
 
 
-function [heights, timestamps] = ExtractFloorHeights(directory)
+function [heights, timestamps] = ExtractSingleFloorPlane(directory)
     heights = [];
     timestamps = [];
     kMinFloorMeasurements = 20;
@@ -339,7 +339,7 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
     [tg_q_i, tg_p_i, tango_times] = ...
                         ExtractTangoData(data_struct.tango_pose_file);
 
-    [heights, plane_times] = ExtractPlaneData(data_struct.plane_folder);
+    [heights, plane_times] = ExtractSingleFloorPlane(data_struct.plane_folder);
     if isempty(plane_times)
 %         disp('No measured planes!');
         RMSE = Inf;
