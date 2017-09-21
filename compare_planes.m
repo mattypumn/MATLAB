@@ -38,22 +38,25 @@ for data_i = 1 : length(datasets)
     iter_folders = GetSubdirectories(fullfile(data_path, 'plane_test_output'));
     dataset_RMSE_1 = [];
     dataset_RMSE_2 = [];
+
+    vicon_pose_file = fullfile(data_path, vicon_object_file);
+    time_alignment_file = fullfile(data_path, 'time_alignment.txt');
+    tango_to_vicon_calibration = fullfile(data_path, ...
+                                'Tango_to_Vicon_Calibration.txt');
+    calib_file_1 = fullfile(data_path, 'calibration.xml');
+    calib_file_2 = fullfile(data_path, 'average_calibration.xml');   
+
     for run_i = 1 : length(iter_folders) 
         %% Build filenames.
         plane_folder_1 = fullfile(iter_folders{run_i}, ...
                                 [desktop_program '_plane_1']);
         plane_folder_2 = fullfile(iter_folders{run_i}, ...
                                 [desktop_program '_plane_2']);
-        time_alignment_file = fullfile(data_path, 'time_alignment.txt');
-        tango_to_vicon_calibration = fullfile(data_path, ...
-                                    'Tango_to_Vicon_Calibration.txt');
-        vicon_pose_file = fullfile(data_path, vicon_object_file);
         tango_pose_file_1 = fullfile(iter_folders{run_i}, ...
                           [desktop_program '_tango_1'], 'tango_poses.txt');
         tango_pose_file_2 = fullfile(iter_folders{run_i}, ...
                           [desktop_program '_tango_2'], 'tango_poses.txt');    
-        calib_file_1 = fullfile(data_path, 'calibration.xml');
-        calib_file_2 = fullfile(data_path, 'average_calibration.xml');
+
         
         %% Build Data structs.
         plane_struct_1 = struct();
@@ -96,14 +99,19 @@ for data_i = 1 : length(datasets)
     %% Save RMSE information for dataset.
     results = struct();
     results.data_dir = data_path;
+
     results.mean_1 = mean(dataset_RMSE_1);
-    results.mean_2 = mean(dataset_RMSE_2);
     results.stddev_1 = std(dataset_RMSE_1);
+
+    results.mean_2 = mean(dataset_RMSE_2);
     results.stddev_2 = std(dataset_RMSE_2);
     
     rmse_structs = [rmse_structs; results];
     disp(['finished ' num2str(data_i) ': ' num2str(results.mean_1)  ' ' num2str(results.mean_2)]);
 end
+
+pause;
+
 
 %% Plot Floor heights in Tango Global.
 tango_fig = figure();
@@ -130,7 +138,6 @@ xlabel('time (s)'); ylabel('floor height (m)');
 
 
 
-
 %% Helper Functions
 function [tg_q_i, tg_p_i, tango_time] = ExtractTangoData(tango_poses_file)
     tango_traj = dlmread(tango_poses_file);
@@ -143,6 +150,40 @@ function [tg_q_i, tg_p_i, tango_time] = ExtractTangoData(tango_poses_file)
         tg_q_i = [];
     end
 end
+
+
+function [plane_data] = ExtractPlaneData(directory)
+    heights = [];
+    timestamps = [];
+    kMinFloorMeasurements = 20;
+    files = GetAllFiles(directory);
+    %% Exctract data.
+    plane_data = [];
+    for i = 1 : size(files, 1)
+        file_str = files{i};
+        s = dir(file_str);
+        if s.bytes == 0
+            continue;
+        else
+            % open the file and read it
+            tmp_data = dlmread(file_str);
+            %  Make sure the data is valid.
+            tmp_data = tmp_data(tmp_data(:,5) > 0, :);
+            plane_data = [plane_data; tmp_data];
+        end
+    end
+    
+    if isempty(plane_data) 
+        return;
+    end
+    
+    %% Sort Data.
+    [~, order_by_updated_time] = sort(plane_data(:,2));
+    plane_data = plane_data(order_by_updated_time, :);
+end
+
+
+
 
 function [heights, timestamps] = ExtractFloorHeights(directory)
     heights = [];
@@ -159,6 +200,7 @@ function [heights, timestamps] = ExtractFloorHeights(directory)
         else
             % open the file and read it
             tmp_data = dlmread(file_str);
+            %  Make sure the data is valid.
             tmp_data = tmp_data(tmp_data(:,5) > 0, :);
             data = [data; tmp_data];
         end
@@ -280,10 +322,15 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
     [path, name, ~] = fileparts(data_struct.plane_folder);
     write_file = fullfile(path, [name '_vicon_and_tango_heights.txt']);
     if exist(write_file, 'file') == 2
-        data = dlmread(write_file); 
-        err = data(:,2)- data(:,3);
-        RMSE = sqrt(mean(err.^2));
-        return;
+        s = dir(write_file);
+        if s.bytes == 0
+            delete(write_file);
+        else
+            data = dlmread(write_file); 
+            err = data(:,2)- data(:,3);
+            RMSE = sqrt(mean(err.^2));
+            return;
+        end
     end
 
     %% Extract raw data from files.
@@ -292,7 +339,7 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
     [tg_q_i, tg_p_i, tango_times] = ...
                         ExtractTangoData(data_struct.tango_pose_file);
 
-    [heights, plane_times] = ExtractFloorHeights(data_struct.plane_folder);
+    [heights, plane_times] = ExtractPlaneData(data_struct.plane_folder);
     if isempty(plane_times)
 %         disp('No measured planes!');
         RMSE = Inf;
@@ -320,8 +367,9 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
 
     [vg_p_targ_, vg_q_targ_] = interp_poses(vg_p_targ', vg_q_targ', ...
                                      vicon_time, tango_times);
-    if isempty(vg_p_targ) 
+    if isempty(vg_p_targ_) 
         disp('Empty set returned from interp_poses.   Exiting...');
+        RMSE = Inf;
         return;
     end    
     
@@ -339,8 +387,9 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
     %% Extract Vicon Global to Tango global from first time instance.
     tg_q_vg = quat_mul(tg_q_i(1,:)', quat_inv(vg_q_i_(1,:)'));
     tg_R_vg = quat2rot(tg_q_vg);
+    tg_p_vg =  tg_p_i(1,:)' - tg_R_vg * vg_p_i_(1,:)';
 
-    %% Convert vicon height to Tango heights.
+    %% Consider Vicon y-axis to be an absolute height.
 %     vicon_floor2Imu_in_tangoFrame = (tg_R_vg * vg_p_i_')';
     vicon_imu_heights = vg_p_i_(:,2);
 
@@ -352,25 +401,24 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
        kTimeEpsilon = 1e-6;
        height_idxs = find(abs(plane_times(:,1) - tango_times(time_i)) < kTimeEpsilon);
 
-       if isempty(height_idxs) 
+       if isempty(height_idxs)
            continue;
        end
        
-       tg_p_i_ = (tg_p_i(time_i,:))';
+       tg_p_i_timei = (tg_p_i(time_i,:))';
        
-       tango_heights = heights(height_idxs);
+       tg_heights = heights(height_idxs);
        
-       if ~isempty(tango_heights)
+       if ~isempty(tg_heights)
           % Sanity check.
-          if ~all(tango_heights == tango_heights(1))
+          if ~all(tg_heights == tg_heights(1))
               disp('Error with one of the tango_heights');
-              tango_heights
+              tg_heights
              pause; 
              continue;
           end
-
           
-          imu_floorheight_FromTango = tango_heights(1) + tg_p_i_(3);
+          imu_floorheight_FromTango = tg_heights(1) + tg_p_i_timei(3);
           imu_floorheight_FromVicon = vicon_imu_heights(time_i);
             
           imu_TangoHeights = [imu_TangoHeights; imu_floorheight_FromTango];
@@ -389,3 +437,4 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
         RMSE = Inf;
     end
 end
+
