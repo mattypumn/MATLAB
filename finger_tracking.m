@@ -6,11 +6,12 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 
 %% Parameters.
 % base directory
-DEBUG_IMAGES = false;
+DEBUG_IMAGES = true;
+SAVE_MASKS = false;
 bounding_pixel_radius = 80;
-start_image = 1;
+start_image = 6;
 end_image = 10000;
-dataset_dir = '~/for_matt/pixel_finger/color/exp6/';
+dataset_dir = '~/for_matt/pixel_finger/color/exp5/';
 tango_to_vicon_calib_filepath = ['~/for_matt/pixel_finger/color/exp5/','Tango_to_Vicon_Calibration.txt'];
 vicon_frame_rate = 500;
 kMaxTimeDiffBetweenCamPoseAndFingerPosition = 1 / vicon_frame_rate;
@@ -28,9 +29,28 @@ time_alignment_filepath = fullfile(dataset_dir, 'time_alignment.txt');
 image_timestamps_file = fullfile(dataset_dir, 'dump/feature_tracking_primary_timestamps.txt');
 image_dir = fullfile(dataset_dir, 'dump/feature_tracking_primary/');
 box_output_file = fullfile(dataset_dir, 'dump/finger_bounding_box.txt');
-marker_output_file = fullfile(dataset_dir, 'dump/marker_pixels.txt');
+marker_output_file = fullfile(dataset_dir, 'dump/7marker_pixels.txt');
 box_format_file = fullfile(dataset_dir, 'box_output_readme.txt');
 
+%% Create save folders.
+mask_dirs = {};
+mask_dirs{1} = fullfile(dataset_dir, 'dump', 'kmeans2');
+mask_dirs{2}= fullfile(dataset_dir, 'dump', 'kmeans3');
+mask_dirs{3} = fullfile(dataset_dir, 'dump', 'kmeans4');
+mask_dirs{4} = fullfile(dataset_dir, 'dump', 'color_raw');
+mask_dirs{5} = fullfile(dataset_dir, 'dump', 'color_smooth');
+if SAVE_MASKS
+    mkdir_command = ['mkdir -p ' mask_dirs{1}];
+    system(mkdir_command);
+    mkdir_command = ['mkdir -p ' mask_dirs{2}];
+    system(mkdir_command);
+    mkdir_command = ['mkdir -p ' mask_dirs{3}];
+    system(mkdir_command);    
+    mkdir_command = ['mkdir -p ' mask_dirs{4}];
+    system(mkdir_command);
+    mkdir_command = ['mkdir -p ' mask_dirs{5}];
+    system(mkdir_command);
+end
 
 %% Import Data.
 % targ: The reference frame of the vicon target.
@@ -119,7 +139,9 @@ end
    
 %% Main loop through and display image with finger points.
 if (DEBUG_IMAGES)
-    fig2d = figure();
+    full_fig = figure();
+    mask_fig = figure();
+    kmeans_fig = figure();
 end
 finger_boxes_data = [];
 marker_pixel_data = [];
@@ -128,9 +150,10 @@ for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
     img_num = tango_img_timestamps(i,1);
     img_time = tango_img_timestamps(i,2);
     
-    image_file = [image_dir 'image_' num2str(img_num, '%05d') '.ppm'];
+    image_file = [image_dir '/image_' num2str(img_num, '%05d') '.ppm'];
     img = imread(image_file);   
     if DEBUG_IMAGES
+        figure(full_fig);
         imshow(img);
         hold on;
     end
@@ -186,6 +209,8 @@ for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
             inbounds_markers_vec = [inbounds_markers_vec; pix];
             inbounds_markers_matrix = [inbounds_markers_matrix, pix];
             if (DEBUG_IMAGES)
+                figure(full_fig);
+                hold on;
                 plot(pix(1), pix(2), '-c+');
             end
         else 
@@ -196,13 +221,43 @@ for i = start_image : min(size(tango_img_timestamps,1)-1, end_image)
     
     %% Calculate the bounding box of finger in image.
     [top_left_corner, height, width] = GetBoundingBox(inbounds_markers_matrix, bounding_pixel_radius);
-    top_left_corner = floor([min(max(top_left_corner(1), 0), size(img, 2));
-                       min(max(top_left_corner(2), 0), size(img, 1))]);
+    top_left_corner = floor([min(max(top_left_corner(1), 1), size(img, 2));
+                       min(max(top_left_corner(2), 1), size(img, 1))]);
     height = floor(min(height, size(img,1) - top_left_corner(2)));
     width = floor(min(width, size(img,2) - top_left_corner(1)));
     
     if DEBUG_IMAGES 
+        figure(full_fig);
         rectangle('position', [top_left_corner', width, height]);
+    end
+    
+    %% If we have a finger, do some region growing.
+    if (height > 0 && width > 0 && any(inbounds_markers_vec > 0) ...
+            && all(top_left_corner > 0) )
+        %% Get the mask.
+        if DEBUG_IMAGES
+            full_masks = GetFingerMasks(img, top_left_corner, ...
+                        height, width, inbounds_markers_vec, kmeans_fig);
+        else 
+            full_masks = GetFingerMasks(img, top_left_corner, ...
+                        height, width, inbounds_markers_vec);
+        end
+        %% Save Masks.
+        if SAVE_MASKS
+            for mask_i = 1 : length(full_masks)
+                if mask_i > length(mask_dirs) 
+                    break; 
+                end
+                save_dir = mask_dirs{mask_i};
+                mask = full_masks{mask_i};
+                mask(:,:,2) = mask(:,:,1);
+                mask(:,:,3) = mask(:,:,1);
+                mask = mask * 255;
+                im_stitched = [img, mask];
+                imwrite(im_stitched, fullfile(save_dir, ...
+                        ['stitched_' num2str(img_num, '%06d') '.png']));
+            end
+        end
     end
     
     %% Save bounding box and marker pixels.
@@ -224,4 +279,136 @@ dlmwrite(marker_output_file, marker_pixel_data, ',');
 
 disp('finished run');
 close all;
+
+%% Helper functions.
+
+function [masks] = GetFingerMasks(img, top_left_corner, height, width, inbounds_markers_vec, fig)
+    masks = {};
+    %% Use only non-zero marker values.
+    inbounds_markers_vec = inbounds_markers_vec(inbounds_markers_vec > 0);
+    sub_inbounds_vec = zeros(size(inbounds_markers_vec));
+    for i = 1 : size(inbounds_markers_vec) 
+        if mod(i, 2)
+            % Odd index. x-values
+            sub_inbounds_vec(i) = inbounds_markers_vec(i) - ...
+                                top_left_corner(1);
+        else
+            % Even index. y-values
+            sub_inbounds_vec(i) = inbounds_markers_vec(i) - ...
+                                top_left_corner(2);
+        end
+    end
+
+    %% Grab the bounding box.
+    sub_img = img(  top_left_corner(2):top_left_corner(2) + height, ...
+                    top_left_corner(1):top_left_corner(1) + width, :);
+
+    %% Attempt to get the mask from using K-means.
+    if exist('fig', 'var')
+        kmeans2_mask = UseKmeanForMask(sub_img, sub_inbounds_vec, 2, fig);
+        kmeans3_mask = UseKmeanForMask(sub_img, sub_inbounds_vec, 3, fig);
+        kmeans4_mask = UseKmeanForMask(sub_img, sub_inbounds_vec, 4, fig);
+    else
+        kmeans2_mask = UseKmeanForMask(sub_img, sub_inbounds_vec, 2);
+        kmeans3_mask = UseKmeanForMask(sub_img, sub_inbounds_vec, 3);
+        kmeans4_mask = UseKmeanForMask(sub_img, sub_inbounds_vec, 4);
+    end
+    
+    %% Use color.
+    color_mask = UseColorThreshForMask(sub_img, sub_inbounds_vec);
+    %% Smooth color mask.
+    kernel_width = 7;
+    kernel = ones(kernel_width) / kernel_width / kernel_width;
+    smoothed = conv2(double(color_mask), kernel, 'same');
+    smoothed = smoothed > 0.25;
+    
+    %% Set in full image mask.  %% Save and return.
+    full_mask = zeros(size(img));
+    full_mask(top_left_corner(2):top_left_corner(2)+height, ...
+              top_left_corner(1):top_left_corner(1)+width) = kmeans2_mask;
+    masks{1} = full_mask;
+    full_mask(top_left_corner(2):top_left_corner(2)+height, ...
+              top_left_corner(1):top_left_corner(1)+width) = kmeans3_mask;
+    masks{2} = full_mask;
+    full_mask(top_left_corner(2):top_left_corner(2)+height, ...
+              top_left_corner(1):top_left_corner(1)+width) = kmeans4_mask;
+    masks{3} = full_mask;
+    full_mask(top_left_corner(2):top_left_corner(2)+height, ...
+              top_left_corner(1):top_left_corner(1)+width) = color_mask;
+    masks{4} = full_mask;
+    full_mask(top_left_corner(2):top_left_corner(2)+height, ...
+              top_left_corner(1):top_left_corner(1)+width) = smoothed;
+    masks{5} = full_mask;
+end
+
+function [sub_mask] = UseKmeanForMask(sub_img, inbounds_markers_vec, nColors, fig)
+    cform = makecform('srgb2lab');
+    lab_he = applycform(sub_img, cform);
+    ab = double(lab_he(:,:,2:3));
+    nrows = size(ab,1);
+    ncols = size(ab,2);
+    ab = reshape(ab,nrows*ncols,2);
+    
+    % repeat the clustering 3 times to avoid local minima
+    [cluster_idx, ~] = kmeans(ab,nColors,'distance', ...
+                                    'sqEuclidean', 'Replicates',3);
+    pixel_labels = reshape(cluster_idx,nrows,ncols);
+    
+    if exist('fig', 'var')
+        figure(fig);
+        imshow(pixel_labels,[]), title('image labeled by cluster index');    
+    end
+    
+    finger_labels = [];
+    for i = 1 : 2 : length(inbounds_markers_vec)
+        pt = inbounds_markers_vec(i:i+1);
+        if sum(pt) > 0
+            label_i = pixel_labels(uint32(pt(2)), uint32(pt(1)));
+            finger_labels = [finger_labels; label_i];
+        end
+    end
+%     finger_label = mode(finger_labels);
+%     sub_mask = pixel_labels == finger_label;
+    sub_mask = pixel_labels == finger_labels(1);
+    for label_i = 2 : length(finger_labels)
+        sub_mask = sub_mask | (pixel_labels == finger_labels(label_i));
+    end
+end
+
+
+function sub_mask = UseColorThreshForMask(sub_img, inbounds_markers_vec, fig)
+    kThresh = 30;
+    kernel = ones(3);
+    kernel = kernel / 9;
+    R_conv = conv2(sub_img(:,:,1), kernel, 'same');
+    G_conv = conv2(sub_img(:,:,2), kernel, 'same');
+    B_conv = conv2(sub_img(:,:,3), kernel, 'same');
+    
+    reds = [];
+    greens = [];
+    blues = [];
+    
+    for i = 1 : 2 : length(inbounds_markers_vec)
+        pt = uint32(inbounds_markers_vec(i : i+1));
+        R_average = R_conv(pt(2), pt(1));
+        G_average = G_conv(pt(2), pt(1));
+        B_average = B_conv(pt(2), pt(1));
+        reds = [reds; R_average];
+        greens = [greens; G_average];
+        blues = [blues; B_average];
+    end
+    average_pixel = [mean(reds); mean(greens); mean(blues)];
+    
+    r_mask = abs(sub_img(:,:,1) - average_pixel(1)) < kThresh;
+    g_mask = abs(sub_img(:,:,2) - average_pixel(2)) < kThresh;
+    b_mask = abs(sub_img(:,:,3) - average_pixel(3)) < kThresh;
+    
+    sub_mask = r_mask & g_mask & b_mask;
+    if exist('fig', 'var')
+        figure(fig)
+        imshow(sub_mask);
+    end
+end
+
+
 

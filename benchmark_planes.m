@@ -15,24 +15,15 @@ vicon_object_file = 'target_poses.txt';
 kViconHeightOffset = 0.00;  %  Height of the wand
 % NOTE: Per phone call with Vicon, the height of the wand is accounted for
 % during calibration.  Thus kViconHeightOffset is set to 0.00.
-   
-% If this is being ran through command line, these variables should be
-% set and we should overwrite the hardcoded values in this script.
-% exist CALIB_COMPARE_DATASET var;
-% is_running_command_line = ans;
-% exist CALIB_COMPARE_PROGRAM var;
-% is_running_command_line = is_running_command_line && ans;
-% if is_running_command_line
-%     base_data_dir = CALIB_COMPARE_DATASET;
-%     desktop_program = CALIB_COMPARE_PROGRAM;
-% end
 
 datasets = GetSubdirectories(base_data_dir);
 
 rmse_structs = [];
 %%  For each dataset in base_data_dir
 for data_i = 1 : length(datasets) 
-    %% Get subdirectories which are separate runs with different seeds.
+    %% Get subdirectories.
+    % These subdirectories correspond to different random seeds used to run
+    % vio and com.
     data_path = datasets{data_i};
     disp(data_path);
     iter_folders = GetSubdirectories(fullfile(data_path, 'plane_test_output'));
@@ -78,9 +69,9 @@ for data_i = 1 : length(datasets)
         plane_struct_2.data_path = data_path;
         
         %% Analyze and save.
-        dataset_RMSE_1 = [dataset_RMSE_1, ...
+        [dataset_RMSE_1, calib1_data] = [dataset_RMSE_1, ...
                         AnalyzePlaneDataForRMSE(plane_struct_1)];
-        dataset_RMSE_2 = [dataset_RMSE_2, ...
+        [dataset_RMSE_2, calib2_data] = [dataset_RMSE_2, ...
                         AnalyzePlaneDataForRMSE(plane_struct_2)];
         disp(['iter: ' num2str(run_i) ' ' num2str(dataset_RMSE_1(end)) ' ' num2str(dataset_RMSE_2(end))]);
     end
@@ -169,7 +160,7 @@ function [plane_data] = ExtractPlaneData(directory)
             tmp_data = dlmread(file_str);
             %  Make sure the data is valid.
             tmp_data = tmp_data(tmp_data(:,5) > 0, :);
-            plane_data = [plane_data; tmp_data];
+            plane_data = [plane_data; tmp_data(:,1:4)];
         end
     end
     
@@ -316,22 +307,65 @@ function [i_p_c, i_q_c] = ExctractIntrinsics(xml_file)
 end
 
 
+function [imu_inlierHeights, outlier_plane_ids] = FilterPlanesUsingViconFloor(Global_plane_subset, tg_p_i_timei, imu_floorheight_FromVicon)
+    %% Setup height threshold.
+    kMaxHeightAboveFloor = 0.4;  % meters
+    minimum_tango_height = imu_floorheight_FromVicon - kMaxHeightAboveFloor;
+    
+    %% initialize output as empty cells.
+    imu_inlierHeights = [];
+    outlier_plane_ids = [];
+    
+    %% Traverse by ids.
+    ids = unique(Global_plane_subset(:,1));
+    for id_i = 1 : length(ids)
+        %% Grab working id and associated data.
+        curr_id = ids(id_i);
+        height_data = Global_plane_subset(Global_plane_subset(:,1) == curr_id, :);
+        heights = height_data(:,4);
+        
+        %% Every identical ID and timestamp should be identi
+        try
+            assert( all(heights(1) == heights) ); 
+        catch
+            disp('Error with dataset and heights');
+            pause;
+            disp('continuing.');
+        end
+        
+        
+        %% Calculate Height of imu from plane.
+        imu_planeheight_fromtango = heights(1) + tg_p_i_timei(3);
+        
+        %% Filter plane by height threshold.
+        %  If height is below threshold -->  The plane is too high above
+        %  the floor, it is an outlier.  Else it is an inlier.
+        if imu_planeheight_fromtango < minimum_tango_height
+            outlier_plane_ids(end + 1) = height_data(1,1);
+        else 
+            imu_inlierHeights(end + 1, :) = height_data(1,:);
+        end
+    end
+end
 
-function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
+function [RMSE, extracted_data] = AnalyzePlaneDataForRMSE(data_struct)
+    extracted_data = struct();
     %% File to write meta data.
     [path, name, ~] = fileparts(data_struct.plane_folder);
     write_file = fullfile(path, [name '_vicon_and_tango_heights.txt']);
     if exist(write_file, 'file') == 2
-        s = dir(write_file);
-        if s.bytes == 0
-            delete(write_file);
-        else
-            data = dlmread(write_file); 
-            err = data(:,2)- data(:,3);
-            RMSE = sqrt(mean(err.^2));
-            return;
-        end
+        delete(write_file);
     end
+%         s = dir(write_file);
+%         if s.bytes == 0
+%             delete(write_file);
+%         else
+%             data = dlmread(write_file); 
+%             err = data(:,2)- data(:,3);
+%             RMSE = sqrt(mean(err.^2));
+%             return;
+%         end
+%     end
 
     %% Extract raw data from files.
     timing_alignment = dlmread(data_struct.time_alignment_file);
@@ -339,12 +373,15 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
     [tg_q_i, tg_p_i, tango_times] = ...
                         ExtractTangoData(data_struct.tango_pose_file);
 
-    [heights, plane_times] = ExtractSingleFloorPlane(data_struct.plane_folder);
-    if isempty(plane_times)
-%         disp('No measured planes!');
+%     [heights, plane_times] = ExtractSingleFloorPlane(data_struct.plane_folder);
+    [plane_data] = ExtractPlaneData(data_struct.plane_folder);
+    if isempty(plane_data)
+        disp('no plane data');
         RMSE = Inf;
         return;
     end
+    % plane_data: 
+    % ${plane_ids} ${updated_time} ${observed_time} ${height}
 
     [vg_q_targ, vg_p_targ, vicon_time] = ...
                     ExtractViconData(data_struct.vicon_pose_file);
@@ -358,7 +395,7 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
 %     [i_p_c, i_q_c] = ExctractIntrinsics(data_struct.calibration_file);
 
     
-    %% Sync data.
+    %% Sync data.    
     vicon_time = vicon_time/timing_alignment(1) + timing_alignment(2);
 
     cond = (tango_times <= max(vicon_time)) & ...
@@ -371,7 +408,7 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
         disp('Empty set returned from interp_poses.   Exiting...');
         RMSE = Inf;
         return;
-    end    
+    end
     
     %%%%%%%%%%%%%%%%%%%%%   {FRAME} Conversions  %%%%%%%%%%%%%%%%%%%%                             
     %% Convert viconGlobal_T_target >>> viconGlobal_T_imu
@@ -393,48 +430,105 @@ function [RMSE] = AnalyzePlaneDataForRMSE(data_struct)
 %     vicon_floor2Imu_in_tangoFrame = (tg_R_vg * vg_p_i_')';
     vicon_imu_heights = vg_p_i_(:,2);
 
+    %% Return extracted data.
+    extracted_data.tango_times = tango_times;
+    extracted_data.tg_p_i = tg_p_i;
+    extracted_data.vg_p_i = vg_p_i_;
+    extracted_data.plane_data = plane_data;
+    
     %%  Extract heights.
-    imu_TangoHeights= [];
+    % Each entry of stored data is a unique entry with corresponding times.
+    % The following 3 datasets should have identical lengths.
+    
+    % Tango tango height entries are cells with needed information.
+    imu_TangoHeights_inliers = cell(0);
+    
+    % Outlier ids is a set of all outlier plane ids.
+    outlier_plane_ids = [];
+    
+    % Vicon heights entries are Scalar values.
     imu_ViconHeights = [];
-    times = [];
+
+%     tmp_ids = [];
     for time_i = 1 : size(tango_times,1)
        kTimeEpsilon = 1e-6;
-       height_idxs = find(abs(plane_times(:,1) - tango_times(time_i)) < kTimeEpsilon);
-
-       if isempty(height_idxs)
+       %% Get Tango_p_IMU information.
+       tg_p_i_timei = (tg_p_i(time_i,:))';
+%        tg_heights = heights(plane_data_idxs);
+       
+       %% Get the Vicon recorded height.
+       imu_floorheight_FromVicon = vicon_imu_heights(time_i);
+      
+       %% Get matching Updated timestamps.
+       plane_data_idxs = find(abs(plane_data(:,2) - tango_times(time_i)) < kTimeEpsilon);
+       if isempty(plane_data_idxs)
            continue;
        end
+       current_plane_subset = plane_data(plane_data_idxs, :);
+%        tmp_ids = [tmp_ids; current_plane_subset(:,1)];
+%        tmp_ids = unique(tmp_ids);
+
        
-       tg_p_i_timei = (tg_p_i(time_i,:))';
+       %% Get inliers and outlier for particular time.
+       [imu_inlierHeights_data, outlier_ids] = ...
+                    FilterPlanesUsingViconFloor(current_plane_subset, ...
+                                tg_p_i_timei, imu_floorheight_FromVicon);
+                            
+                            
+       %% Store all of the data.
+       % Inliers.
+       imu_TangoHeights_inliers{end+1} = imu_inlierHeights_data;
        
-       tg_heights = heights(height_idxs);
-       
-       if ~isempty(tg_heights)
-          % Sanity check.
-          if ~all(tg_heights == tg_heights(1))
-              disp('Error with one of the tango_heights');
-              tg_heights
-             pause; 
-             continue;
-          end
-          
-          imu_floorheight_FromTango = tg_heights(1) + tg_p_i_timei(3);
-          imu_floorheight_FromVicon = vicon_imu_heights(time_i);
-            
-          imu_TangoHeights = [imu_TangoHeights; imu_floorheight_FromTango];
-          imu_ViconHeights = [imu_ViconHeights; imu_floorheight_FromVicon];
-          times = [times; tango_times(time_i)];
+       % Outliers.
+       for outlier_i = 1 : length(outlier_ids)
+            outlier_id = outlier_ids(outlier_i);
+            % If not already in outliers.
+            if ~any(outlier_plane_ids == outlier_id)
+                outlier_plane_ids(end+1) = outlier_id;
+            end
        end
+       
+       % Vicon heights.
+       imu_ViconHeights = [imu_ViconHeights; imu_floorheight_FromVicon];
     end
-    %% Save Heights.
-    dlmwrite(write_file, [times, imu_TangoHeights, imu_ViconHeights]);
     
     %% Calculate RMSE.
-    if ~isempty(imu_TangoHeights) && ~isempty(imu_ViconHeights)
-        err = abs(imu_TangoHeights - imu_ViconHeights);
-        RMSE = sqrt(mean(err.^2));
-    else  
+    inlier_ids = [];
+    if ~isempty(imu_TangoHeights_inliers) && ~isempty(imu_ViconHeights)
+        err = [];
+        for time_i = 1 : size(imu_ViconHeights)
+            %% Grab data.
+            plane_data_i = imu_TangoHeights_inliers(time_i);
+            plane_data_i = plane_data_i{1};
+            if isempty(plane_data_i)
+                continue;
+            end
+            %% Save plane ids.
+            plane_ids = plane_data_i(:,1);
+            inlier_ids = [inlier_ids; plane_ids];
+            inlier_ids = unique(inlier_ids);            
+            %% Calculate errors
+            vicon_height_i = imu_ViconHeights(time_i);
+            err = [err; abs(plane_data_i(:,4) - vicon_height_i)];
+        end
+        if isempty(err)
+            RMSE = Inf;
+        else 
+            RMSE = sqrt(mean(err.^2));
+        end
+    else
         RMSE = Inf;
     end
+    disp(['inliers: ' num2str(inlier_ids') '  outliers: ' num2str(outlier_plane_ids)]);
+    try
+    assert(length(outlier_plane_ids) + length(inlier_ids) >= length(unique(plane_data(:,1))));
+    catch 
+        disp('somthing is wrong with inlier/outlier');
+%         pause;
+%         disp('continuing.');
+    end
+    %% Extracted Data.
+    extracted_data.inlier_ids = inlier_ids;
+    extracted_data.outlier_ids = outlier_plane_ids;
 end
 
