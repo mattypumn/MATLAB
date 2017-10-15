@@ -9,7 +9,7 @@ addpath(fullfile(mars_matlab_path, 'robotics3D'));
 DEBUG_IMAGES = true;
 SAVE_MASKS = false;
 bounding_pixel_radius = 80;
-start_image = 6;
+start_image = 200;
 end_image = 10000;
 dataset_dir = '~/for_matt/pixel_finger/color/exp5/';
 tango_to_vicon_calib_filepath = ['~/for_matt/pixel_finger/color/exp5/','Tango_to_Vicon_Calibration.txt'];
