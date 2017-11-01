@@ -137,7 +137,7 @@ function box = GrowBoundingBoxToRatio(BoundingBox, roi_height, ...
             %% TODO(mpoulter) Shrink width. 
             % Currently not implemented as we do not want to lose and 
             % of the mask. 
-            new_w = floor(image_size(2) - new_upper_left_x);
+            new_w = floor(image_size(2) - new_upperleft_x);
         end
         new_upperleft_y = start_y;
         new_h = start_h;

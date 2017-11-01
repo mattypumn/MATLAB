@@ -1,7 +1,7 @@
 clear; clc; close all;
 
 %% Parameters.
-dataset = '~/for_matt/pixel_finger/static_camera/exp6';
+dataset = '~/for_matt/pixel_finger/static_camera/exp4';
 images_dir = fullfile(dataset, 'dump', 'feature_tracking_cropped');
 template = 'image_%05d.ppm';
 output_dir = fullfile(dataset,'dump', 'cropped_hand');
@@ -16,7 +16,7 @@ last_image = 3000;
 output_height = 240;
 output_width = 240;
 
-%% Hyper Parameters for segmenting.
+%% Segmenting Parameters.
 kNumSuperPixels = 500;
 kSuperPixelMinArea = 0.75;
 
