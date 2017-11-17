@@ -5,12 +5,18 @@ dataset = '~/for_matt/pixel_finger/static_camera/exp4';
 images_dir = fullfile(dataset, 'dump', 'feature_tracking_cropped');
 template = 'image_%05d.ppm';
 output_dir = fullfile(dataset,'dump', 'cropped_hand');
-mask_template = 'mask_%05d.ppm';
+mask_template = 'mask_%05d.png';
+im_out_template = 'image_%05d.png';
+
+
+debug_output_dir = fullfile(dataset, 'dump', 'masked_hand');
+debug_template = fullfile(debug_output_dir, 'masked_%05d.ppm');
 
 DEBUG_IMAGES = false;
+SAVE_DEBUG = false;
 
 bg_image_num = 40;
-first_image = 100;
+first_image = 50;
 last_image = 3000;
 
 output_height = 240;
@@ -27,10 +33,13 @@ kUvThresh = 8;
 
 %% Setup.
 read_template = fullfile(images_dir, template);
-write_template = fullfile(output_dir, template);
+write_template = fullfile(output_dir, im_out_template);
 mask_template = fullfile(output_dir, mask_template);
 
 system(['mkdir -p ' output_dir]);
+if DEBUG_IMAGES && SAVE_DEBUG 
+   system(['mkdir -p ' debug_output_dir]);
+end
 
 %% Extract Background data.
 bg_rgb = imread(sprintf(read_template, bg_image_num));
@@ -104,8 +113,12 @@ for i = first_image : last_image
         r(mask) = 255;
         im_show(:,:,1) = r; 
 
-        figure(mask_fig);
-        imshow(im_show);
+%         figure(mask_fig);
+%         imshow(im_show);
+        if SAVE_DEBUG 
+            debug_file = sprintf(debug_template, i);
+            imwrite(im_show, debug_file);
+        end
     end
 %     if i == 369
 %         pause;

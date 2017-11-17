@@ -10,6 +10,7 @@ function [crop_im, crop_mask] = CropROI(image, mask, roi_height, roi_width)
     %% Constants.
     kGrowthPercentage = 0.25;
     
+    % TODO(mpoulter) Lower bound thresholding and deal with the union.
     %% Find tight bound.
     stats = regionprops(mask, 'all');
     n = length (stats);
@@ -32,7 +33,7 @@ function [crop_im, crop_mask] = CropROI(image, mask, roi_height, roi_width)
     
     
     
-    %% Increase by 10%.
+    %% Increase by kGrowthPercentage%.
     width_inc = bounding_box(3) * kGrowthPercentage;
     height_inc = bounding_box(4) * kGrowthPercentage;
     new_upperleft_x = max(1, bounding_box(1) - 0.5 * width_inc);
