@@ -1,7 +1,7 @@
 clear; clc; close all;
 
 %% Parameters.
-dataset = '~/for_matt/pixel_finger/static_camera/exp4';
+dataset = '~/for_matt/pixel_finger/static_camera/exp2';
 images_dir = fullfile(dataset, 'dump', 'feature_tracking_cropped');
 template = 'image_%05d.ppm';
 output_dir = fullfile(dataset,'dump', 'cropped_hand');
@@ -12,7 +12,7 @@ im_out_template = 'image_%05d.png';
 debug_output_dir = fullfile(dataset, 'dump', 'masked_hand');
 debug_template = fullfile(debug_output_dir, 'masked_%05d.ppm');
 
-DEBUG_IMAGES = false;
+DEBUG_IMAGES = true;
 SAVE_DEBUG = false;
 
 bg_image_num = 40;
@@ -23,13 +23,13 @@ output_height = 240;
 output_width = 240;
 
 %% Segmenting Parameters.
-kNumSuperPixels = 500;
-kSuperPixelMinArea = 0.75;
+% kNumSuperPixels = 500;
+% kSuperPixelMinArea = 0.75;
 
 kRgbThreshold = 10;
 kHueThresh = 0.1;
 kSatThresh = .01;
-kUvThresh = 8;
+kUvThresh = 7;
 
 %% Setup.
 read_template = fullfile(images_dir, template);
@@ -88,15 +88,19 @@ for i = first_image : last_image
     im_ycbcr(:,:,2) = medfilt2(im_ycbcr(:,:,2));
     im_ycbcr(:,:,3) = medfilt2(im_ycbcr(:,:,3));
     
-
-    diff = abs(bg_ycbcr - im_ycbcr);
+    % Calculate any background changes in the image.
+    lighting_gain = ransac_background_diff(bg_ycbcr, im_ycbcr);
+    
+    diff = im_ycbcr - bg_ycbcr - lighting_gain;
 %     diff_1norm = diff(:,:,1) + diff(:,:,2) + diff(:,:,3);
     diff_2_norm = sqrt(diff(:,:,2).^2 + diff(:,:,3).^2);
+
+        
+
 %     figure(hh), hist(diff_2_norm(:), 100)
-    
     % rgb thresh.
 %     mask = diff_1norm > kRgbThreshold;
-    
+
     % hue thresh.
 %     mask = diff(:,:,1) > kHueThresh;
     mask1 = (diff_2_norm > kUvThresh);% | (h < .09 & diff_2_norm > 1);
@@ -113,11 +117,11 @@ for i = first_image : last_image
         r(mask) = 255;
         im_show(:,:,1) = r; 
 
-%         figure(mask_fig);
-%         imshow(im_show);
+        figure(mask_fig);
+        imshow(im_show);
         if SAVE_DEBUG 
             debug_file = sprintf(debug_template, i);
-            imwrite(im_show, debug_file);
+%             imwrite(im_show, debug_file);
         end
     end
 %     if i == 369
@@ -128,11 +132,45 @@ for i = first_image : last_image
     if isempty(train_im) || isempty(train_mask)
         continue;
     end
-    imwrite(train_im, hand_file);
-    imwrite(train_mask, mask_file);
-    disp(['saving: ' num2str(i)]);
+%     imwrite(train_im, hand_file);
+%     imwrite(train_mask, mask_file);
+%     disp(['saving: ' num2str(i)]);
 end
 
 function out_mask = RegionGrow(in_mask, original_image)
     out_mask = in_mask;
 end
+
+function [lighting_gain] = ransac_background_diff(bg_ycbcr, im_ycbcr)
+    [im_m, im_n, ~] = size(im_ycbcr);
+    [bg_m, bg_n, ~] = size(bg_ycbcr);
+    
+    assert(im_m == bg_m);
+    assert(im_n == bg_n);
+    
+    diff = im_ycbcr - bg_ycbcr;
+    
+    kDiffInflation = 1.1;
+    kInlierThresh = 1;
+%     kInflationRate = 0.1;  %  Allow 10% difference.
+    inlier_count = 0;
+    optimal_lighting_diff = [0 0 0];
+    for i = 1 : 100
+        xy = 1 + ([bg_n+1, bg_m+1] - 1).*rand(1, 2);
+        x = floor(xy(1));
+        y = floor(xy(2));
+        random_sample = diff(y, x, :);
+        
+        diff_minus_sample = diff - random_sample .* kDiffInflation;
+        
+        count = sum(sum(sum(diff_minus_sample .* diff_minus_sample, 3) <= 1));
+        
+        
+        if count > inlier_count
+            inlier_count = count;
+            optimal_lighting_diff = random_sample;
+        end
+    end
+    lighting_gain = optimal_lighting_diff;
+end
+
