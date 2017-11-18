@@ -91,9 +91,9 @@ for i = first_image : last_image
     % Calculate any background changes in the image.
     lighting_gain = ransac_background_diff(bg_ycbcr, im_ycbcr);
     
-    diff = im_ycbcr - bg_ycbcr - lighting_gain;
+    adjusted_diff = im_ycbcr - bg_ycbcr - lighting_gain;
 %     diff_1norm = diff(:,:,1) + diff(:,:,2) + diff(:,:,3);
-    diff_2_norm = sqrt(diff(:,:,2).^2 + diff(:,:,3).^2);
+    adjusted_diff_2_norm = sqrt(adjusted_diff(:,:,2).^2 + adjusted_diff(:,:,3).^2);
 
         
 
@@ -103,7 +103,7 @@ for i = first_image : last_image
 
     % hue thresh.
 %     mask = diff(:,:,1) > kHueThresh;
-    mask1 = (diff_2_norm > kUvThresh);% | (h < .09 & diff_2_norm > 1);
+    mask1 = (adjusted_diff_2_norm > kUvThresh);% | (h < .09 & diff_2_norm > 1);
 %     mask1 = mask1 | diff(:,:,1) > 30;
 %     mask1 = diff_1norm > kHueThres1h;
     mask2 = (r > 0.9 * g) & (g > 0.6 * b) & (r > .9 * b) & ...
