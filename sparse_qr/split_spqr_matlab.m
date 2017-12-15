@@ -41,20 +41,24 @@ disp(['Relative error over J (matlab vs SuiteSparse): ' ...
               '%0.4e') ' %']);
        
 %% Solve by subsystems.
-x = subsolve_spqr(J_sparse, 3, b);
-x2 = subsolve_thin_spqr(J_sparse, 3, b);
+% x = subsolve_spqr(J_sparse, 3, b);
+[m, n] = size(J_sparse);
+data = {};
+for iter = 1 : 10
+    dat_i = 1;
+    for num_splits = 3:floor(m / n)
+        [x, dat] = subsolve_thin_spqr(J_sparse, num_splits, b);
+        data{iter, dat_i} = dat;
+        dat_i = dat_i + 1;
+        res_sub = J_sparse * x - b;
+        err_sub = norm(res_sub);
+        disp(['Relative error (original vs subsytem): ' ...
+            num2str(100 * abs(err_matlab - err_sub) / err_matlab, ...
+                      '%0.4e') ' %']);
+    end
+end
 
-res_sub = J_sparse * x - b;
-err_sub = norm(res_sub);
-disp(['Relative error (original vs subsytem): ' ...
-      num2str(100 * abs(err_matlab - err_sub) / err_matlab, ...
-              '%0.4e') ' %']);
-
-res_sub_thin = J_sparse * x2 - b;
-err_sub_thin = norm(res_sub_thin);
-disp(['Relative error (original vs subsystem-thin): ' ...
-      num2str(100 * abs(err_matlab - err_sub_thin) / err_matlab, ...
-              '%0.4e') ' %']);
+disp('Finished.');
 
 
 %% Helper functions.
@@ -116,71 +120,106 @@ end
 
 
 
-function x = subsolve_thin_spqr(J, num_sub_matrices, b)
+function [x, data] = subsolve_thin_spqr(J, num_sub_matrices, b)
     % TODO(mpoutler) R becomes singular.  Something is not correct with
     % Building R_huge -- most likely to do with the permutation.
+    data.sub_time = [];
+    data.full_time = [];
+    data.sub_J_nnz = [];
+    data.sub_R_nnz = [];
+    data.full_R_huge_nnz = [];
+    data.R_huge_rows = [];
+    data.R_final_nnz = [];
+
     
     % Solve for Jx = b.
     [m, n] = size(J);
     block_size = floor(m / num_sub_matrices);
     % TODO(mpoulter) use sparse arrays and build sparse matrix at the end.
-    %% Built the large system of solved subsystems.
-    R_huge = sparse(n * num_sub_matrices, n);
+    %% Build the large system of solved subsystems.
+    R_huge = sparse(n * num_sub_matrices, n);       % shell
     y_huge = zeros(n * num_sub_matrices, 1);
-    test_indices = zeros(n, 1);
-    last_filled = 0;
+    test_indices = zeros(n * num_sub_matrices, 1);
+    last_extracted = 0;
+
+    %% For each sub matrix.
     for i = 1 : num_sub_matrices - 1
+        %% Extract.
         start_extract_row = block_size * (i-1) + 1;
         end_extract_row = start_extract_row + block_size - 1;
-        
         start_insert_row = n * (i-1) + 1;
         end_insert_row = start_insert_row + n - 1;
-                
+               
         A = J(start_extract_row:end_extract_row, :);
+        
+        %% Time.
         tic;
         [C, R, p] = spqr(A, b(start_extract_row:end_extract_row, :), 0);
         time = toc;
-        disp([num2str(i) ' sub-matrix time: ' num2str(time)]);
         
+        %% Display and save.
+        disp([num2str(i) ' sub-matrix time: ' num2str(time)]);
+        data.sub_time = [data.sub_time, time];
+        data.sub_R_nnz = [data.sub_R_nnz, nnz(R)];
+        data.sub_J_nnz = [data.sub_J_nnz, nnz(A)];
+                
+        %% Permute our R matrix so all match up.
         P = speye(size(R, 2));
         P = P(:, p);
         y_huge(start_insert_row:end_insert_row) = C;
         R_huge(start_insert_row:end_insert_row, :) = R * P';
         
-        %%% For testing.
+        %% For testing.  Later this is used to assert indexing.
         test_indices(start_insert_row:end_insert_row) = ...
             start_insert_row:end_insert_row;
-        last_filled = end_extract_row;
+        last_extracted = end_extract_row;
     end
     
-    %  Final block to adjust for odd cases.
-    start_extract_row = last_filled + 1;
+    %%  Final block for uneven split over num_sub_matrices.
+    % Extract.
+    start_extract_row = last_extracted + 1;
     i = i + 1;
     start_insert_row = n * (i-1) + 1;
-    
     A = J(start_extract_row:end, :); 
+    
+    %% Time.
     tic;
     [C, R, p] = spqr(A, b(start_extract_row:end, :), 0);
     time = toc;
-    disp(['final sub-matrix time: ' num2str(time)]);
     
+    %% Display and save (Final sub-matrix).
+    disp([num2str(i) ' sub-matrix time: ' num2str(time)]);
+    data.sub_time = [data.sub_time, time];
+    data.sub_R_nnz = [data.sub_R_nnz, nnz(R)];
+    data.sub_J_nnz = [data.sub_J_nnz, nnz(A)];
+    
+    %% Insert R into R_huge.
     P = speye(size(R,2));
     P = P(:,p);
     y_huge(start_insert_row:end, :) = C;
     R_huge(start_insert_row:end, :) = R * P';
     
-    test_indices(start_insert_row:end) = start_extract_row:(size(y_huge, 1));
+    %% Assert proper indexing.
+    test_indices(start_insert_row:end) = start_insert_row:(size(test_indices, 1));
     assert(all(diff(test_indices) == 1));
     assert(sum(test_indices) == ...
         ((length(test_indices)^2 + length(test_indices))/2));  % n(n+1)/2
       
-    
+    %% Time R_huge decomposition.
     tic; 
     [C, R, p] = spqr(R_huge, y_huge, 0);
     time = toc;
+    
+    %% Display Save data.
+    [m, ~] = size(R);
+    disp(['Reconstructed matrix time: ' num2str(time)]);
+    data.full_time = time;
+    data.full_R_huge_nnz = nnz(R_huge);
+    data.R_huge_rows = m;
+    data.R_final_nnz = nnz(R);
 
+    %% Final solve.  'x' is returned.
     P = speye(size(R,2));
     P = P(:,p);
     x = P * (R \ C);
-    disp(['Reconstructed matrix time: ' num2str(time)]);
 end

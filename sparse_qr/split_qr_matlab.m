@@ -58,7 +58,7 @@ for num_splits = 3:floor(m / n)
 end
 %% Helper functions.
        
-function [x] = subsolve_qr(J, num_sub_matrices, b)
+function x = subsolve_qr(J, num_sub_matrices, b)
     % TODO(mpoutler) R becomes singular.  Something is not correct with
     % Building R_huge -- most likely to do with the permutation.
     
