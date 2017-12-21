@@ -4,7 +4,7 @@ roi_height = 240;
 roi_width = 240;
 
 %%  Parameters.
-dataset = fullfile('pixel_finger', 'static_camera', 'exp1');
+dataset = fullfile('pixel_finger', 'static_camera', 'exp2');
 input_image_directory = fullfile('~/for_matt', dataset, 'dump', ...
     'feature_tracking_cropped_png');
 input_mask_directory = fullfile('~/for_matt', dataset, 'dump', ...
